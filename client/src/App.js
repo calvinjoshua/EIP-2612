@@ -1,33 +1,31 @@
 import React, { Component } from "react";
-import SimpleStorageContract from "./contracts/SimpleStorage.json";
+import Diam from "./contracts/Diam.json";
 import getWeb3 from "./getWeb3";
 import "./App.css";
-var ethUtil = require('ethereumjs-util');
-var sigUtil = require('eth-sig-util');
+import { ethers } from "ethers";
+// var ethUtil = require('ethereumjs-util');
+// var sigUtil = require('eth-sig-util');
+
 
 class App extends Component {
-  state = { storageValue: 0, web3: null, accounts: null, contract: null };
+  state = { allowance: 0, storageValue: "", web3: null, signer: null, accounts: null, contract: null };
 
   componentDidMount = async () => {
     try {
-      // Get network provider and web3 instance.
-      const web3 = await getWeb3();
 
-      // Use web3 to get the user's accounts.
-      const accounts = await web3.eth.getAccounts();
+      const web3 = new ethers.providers.Web3Provider(window.ethereum)
 
-      // Get the contract instance.
-      const networkId = await web3.eth.net.getId();
-      const deployedNetwork = SimpleStorageContract.networks[networkId];
-      const instance = new web3.eth.Contract(
-        SimpleStorageContract.abi,
-        deployedNetwork && deployedNetwork.address,
-      );
-      // Set web3, accounts, and contract to the state, and then proceed with an
-      // example of interacting with the contract's methods.
-      this.setState({ web3, accounts, contract: instance }, this.runExample);
+      await web3.send("eth_requestAccounts", []);
+
+      const signer = web3.getSigner();
+      console.log("Account:", await signer.getAddress());
+
+      const accounts = await signer.getAddress()
+
+      const instance = new ethers.Contract("0x1e4ec7669CAD6CB8Cc5FDD7233Ef559112a015D2", Diam.abi, web3);
+
+      this.setState({ web3, signer, accounts, contract: instance });
     } catch (error) {
-      // Catch any errors for any of the above operations.
       alert(
         `Failed to load web3, accounts, or contract. Check console for details.`,
       );
@@ -35,94 +33,100 @@ class App extends Component {
     }
   };
 
-  runExample = async () => {
+
+  name = async () => {
     const { accounts, contract } = this.state;
     // Get the value from the contract to prove it worked.
-    const response = await contract.methods.get().call();
+    const response = await contract.name();
+    console.log("res ", response)
     // Update state with the result.
     this.setState({ storageValue: response });
   };
 
-  signData = async () => {
-    const { web3, accounts, contract } = this.state;
-    var signer = accounts[0];
-    var milsec_deadline = Date.now() / 1000 + 100;
-    console.log(milsec_deadline, "milisec");
-    var deadline = parseInt(String(milsec_deadline).slice(0, 10));
-    console.log(deadline, "sec");
-    var x = 157;
+  getAllowance = async () => {
+    const { accounts, contract } = this.state;
+    console.log(accounts)
+    // Get the value from the contract to prove it worked.
+    const response = await contract.allowance(accounts.toString(), "0xf796CBb51DcCdABfe3d7f7B3aA05db9eC89E8E28");
+    console.log("res ", response.toString())
+    // Update state with the result.
+    this.setState({ allowance: response.toString() });
+  };
 
-    web3.currentProvider.sendAsync({
-      method: 'net_version',
-      params: [],
-      jsonrpc: "2.0"
-    }, function (err, result) {
-      const netId = result.result;
-      console.log("netId", netId);
-      const msgParams = JSON.stringify({types:
-        {
-        EIP712Domain:[
-          {name:"name",type:"string"},
-          {name:"version",type:"string"},
-          {name:"chainId",type:"uint256"},
-          {name:"verifyingContract",type:"address"}
-        ],
-        set:[
-          {name:"sender",type:"address"},
-          {name:"x",type:"uint"},
-          {name:"deadline", type:"uint"}
-        ]
+  signData = async () => {
+
+    const { web3, signer, accounts, contract } = this.state;
+
+    console.log("signer", await signer.getAddress())
+
+    var milsec_deadline = Date.now() / 1000 + 100;
+
+    console.log(milsec_deadline, "milisec");
+
+    var deadline = parseInt(String(milsec_deadline).slice(0, 10));
+
+    console.log(deadline, "sec");
+
+    var _nun = await contract.nonces(accounts.toString())
+
+    var nun = _nun.toString()
+
+    console.log("nounce ", nun)
+
+    const _chainId = await web3.getNetwork()
+
+    console.log("netId", _chainId.chainId);
+
+
+    console.log("started")
+
+    const sig = await signer._signTypedData(
+      {
+        name: "Diam", version: "1", chainId: _chainId, verifyingContract: "0x1e4ec7669CAD6CB8Cc5FDD7233Ef559112a015D2"
       },
-      //make sure to replace verifyingContract with address of deployed contract
-      primaryType:"set",
-      domain:{name:"SetTest",version:"1",chainId:netId,verifyingContract:"0x803B558Fd23967F9d37BaFe2764329327f45e89E"},
-      message:{
-        sender: signer,
-        x: x,
+      {
+        Permit: [
+          {
+            name: "owner",
+            type: "address",
+          },
+          {
+            name: "spender",
+            type: "address",
+          },
+          {
+            name: "value",
+            type: "uint256",
+          },
+          {
+            name: "nonce",
+            type: "uint256",
+          },
+          {
+            name: "deadline",
+            type: "uint256",
+          },
+        ],
+      },
+      {
+        owner: signer,
+        spender: "0xf796CBb51DcCdABfe3d7f7B3aA05db9eC89E8E28",
+        value: 10000000000,
+        nonce: nun,
         deadline: deadline
       }
-      })
+    )
 
-      var from = signer;
-    
-      console.log('CLICKED, SENDING PERSONAL SIGN REQ', 'from', from, msgParams)
-      var params = [from, msgParams]
-      console.dir(params)
-      var method = 'eth_signTypedData_v3'
-    
-      web3.currentProvider.sendAsync({
-        method,
-        params,
-        from,
-      }, async function (err, result) {
-        if (err) return console.dir(err)
-        if (result.error) {
-          alert(result.error.message)
-        }
-        if (result.error) return console.error('ERROR', result)
-        console.log('TYPED SIGNED:' + JSON.stringify(result.result))
-    
-        const recovered = sigUtil.recoverTypedSignature({ data: JSON.parse(msgParams), sig: result.result })
-    
-        if (ethUtil.toChecksumAddress(recovered) === ethUtil.toChecksumAddress(from)) {
-          alert('Successfully ecRecovered signer as ' + from)
-        } else {
-          alert('Failed to verify signer when comparing ' + result + ' to ' + from)
-        }
+    console.log(sig)
 
-        //getting r s v from a signature
-        const signature = result.result.substring(2);
-        const r = "0x" + signature.substring(0, 64);
-        const s = "0x" + signature.substring(64, 128);
-        const v = parseInt(signature.substring(128, 130), 16);
-        console.log("r:", r);
-        console.log("s:", s);
-        console.log("v:", v);
+    const { v, r, s } = ethers.utils.splitSignature(sig)
 
-        await contract.methods.executeSetIfSignatureMatch(v,r,s,signer, deadline, x).send({ from: accounts[0] });
-      }) 
-    })
+
+    await contract.methods.permit(signer, "0xf796CBb51DcCdABfe3d7f7B3aA05db9eC89E8E28", 10000000000, deadline, v, r, s,).send({ from: accounts[0] });
   }
+
+
+
   render() {
     if (!this.state.web3) {
       return <div>Loading Web3, accounts, and contract...</div>;
@@ -130,11 +134,22 @@ class App extends Component {
     return (
       <div className="App">
         <h2>EIP 712 Example</h2>
-        <p>
-          Try changing the value stored on <strong>line 51</strong> of App.js.
-        </p>
-        <div>The stored value is: {this.state.storageValue}</div>
-        <button onClick={() => this.signData()}> Press to sign </button>
+
+        <div>connected wallet: {this.state.accounts}</div>
+
+        <hr></hr>
+
+        <div>Allowance of {this.state.accounts} to 0xf796CBb51DcCdABfe3d7f7B3aA05db9eC89E8E28: {this.state.allowance}</div>
+
+        <br></br>
+
+        <button onClick={() => this.name()}> get name </button>
+        <br></br>
+        <button onClick={() => this.getAllowance()}> get allowance of owner to 0xf796CBb51DcCdABfe3d7f7B3aA05db9eC89E8E28</button>
+        <br></br>
+        <div>The contract name is: {this.state.storageValue}</div>
+        <br></br>
+        <button onClick={() => this.signData()}> Press to permit 0xf796CBb51DcCdABfe3d7f7B3aA05db9eC89E8E28  </button>
       </div>
     );
   }
