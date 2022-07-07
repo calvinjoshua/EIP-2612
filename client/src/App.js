@@ -169,7 +169,7 @@ class App extends Component {
   buyTokens = async (event) => {
 
     event.preventDefault();
-    const { accounts, contract } = this.state;
+    const { accounts, tokenC } = this.state;
 
     let _web3 = new ethers.providers.JsonRpcBatchProvider("https://ropsten.infura.io/v3/0186bbd47475436b9e3ff3d644b4d21c")
 
@@ -177,7 +177,7 @@ class App extends Component {
 
     console.log("Sending tokens from " + (await signer.getAddress()).toString() + " to " + accounts.toString())
 
-    const contractWithSigner = contract.connect(signer);
+    const contractWithSigner = tokenC.connect(signer);
 
 
     let wei = ethers.utils.parseEther("100");
